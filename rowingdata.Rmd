@@ -1,0 +1,396 @@
+# Introduction
+
+```{r}
+# Libraries
+
+
+library(pacman)
+
+p_load("tidyverse",
+       "lubridate",
+       "janitor",
+       "DT")
+```
+
+# Collect data
+
+```{r}
+# Files vector
+
+vec_data <- paste0("input/speedcoach/", list.files("input/speedcoach"))
+
+# Dummy tibble for data per stroke   
+
+
+vec_name_per_stroke <- c(
+    "interval" ,
+    "distance_gps" ,
+    "distance_imp" ,
+    "elapsed_time" ,
+    "split_gps" ,
+    "speed_gps" ,
+    "split_imp" ,
+    "speed_imp" ,
+    "stroke_rate" ,
+    "total_strokes" ,
+    "distance_stroke_gps",
+    "distance_stroke_imp",
+    "heart_rate",
+    "power" ,
+    "catch" ,
+    "slip" ,
+    "finish" ,
+    "wash" ,
+    "force_avg" ,
+    "work" ,
+    "force_max" ,
+    "max_force_angle" ,
+    "gps_lat" ,
+    "gps_lon",
+    "id"
+)
+
+vec_names <- setNames(rep("", length(vec_name_per_stroke)), vec_name_per_stroke)
+data_stroke_0 <- as_tibble(t(vec_names))[0, ]
+
+# Dummy for summary
+
+vec_name_per_workout <- c(
+    "interval" ,
+    "total_distance_gps",
+    "total_distance_imp",
+    "total_elapsed_time",
+    "avg_split_gps" ,
+    "avg_speed_gps" ,
+    "avg_split_imp" ,
+    "avg_speed_imp" ,
+    "avg_stroke_rate" ,
+    "total_strokes" ,
+    "distance_stroke_gps",
+    "distance_stroke_imp",
+    "avg_heart_rate" ,
+    "avg_power" ,
+    "avg_catch" ,
+    "avg_slip" ,
+    "avg_finish" ,
+    "avg_wash" ,
+    "avg_force_avg" ,
+    "avg_work" ,
+    "avg_force_max" ,
+    "avg_max_force_angle",
+    "start_gps_lat" ,
+    "start_gps_lon",
+    "id"
+)
+
+vec_names <- setNames(rep("", length(vec_name_per_workout)), vec_name_per_workout)
+data_sum_0 <- as_tibble(t(vec_names))[0, ]
+
+# Loop
+
+for (i in 1:length(vec_data)) {
+    
+    # Metadata
+    
+    meta_data <- read_csv(vec_data[i], col_names = FALSE)
+    workout <- meta_data[2, 2] %>% pull()
+    id <- meta_data[3, 2] %>% pull()
+    
+    time_m <- str_sub(id, 15, 16)
+    
+    time_h <- str_sub(id, 12, 13)
+    
+    time <- if (as.numeric(time_h) > 12) {
+        paste0(str_pad(string = as.character(as.numeric(time_h) - 12),
+                       width = 2, side = "left", pad = "0"), time_m, "PM")
+    } else if (time_h == "12") {
+        paste0(12, time_m, "PM")
+    } else {
+        paste0(time_h, time_m, "AM")
+    }
+
+    time_mm <- str_sub(id, 1,2)
+    time_dd <- str_sub(id, 4,5)
+    time_yy <- str_sub(id, 7,10)
+    
+    date <- paste0(time_dd, "/", time_mm, "/", time_yy)
+    
+    # Data per stroke
+    
+    data_stroke <- read_delim(vec_data[i], 
+                              delim = ",", 
+                              col_names = TRUE, 
+                              skip = 28,
+                              col_type = paste(rep("c", 27), collapse = "")) %>% 
+        clean_names() %>% 
+        filter(interval != "(Interval)") %>% 
+        mutate(id = id) %>% 
+        mutate(date = date) %>% 
+        mutate(time = time)  %>% 
+        mutate(workout = workout)
+        
+    # Data summary 
+    
+    data_sum <- read_delim(vec_data[i], delim = ",",
+                           col_names = TRUE,
+                           skip = 20,
+                           col_type = paste(rep("c", 27), collapse = "")) %>% 
+        clean_names()
+    
+    n_interval <- which(data_sum$interval == "Per-Stroke Data:")
+    
+    data_sum <- data_sum[2:(n_interval - 1),] %>% 
+       mutate(id = id) %>% 
+       mutate(date = date) %>% 
+       mutate(time = time) %>% 
+       mutate(workout = workout)
+        
+    # Finalise
+    
+    data_stroke_0 <- bind_rows(data_stroke , data_stroke_0) 
+    data_sum_0 <- bind_rows(data_sum , data_sum_0)
+    
+}
+
+
+
+
+```
+
+# Process
+
+## Add complementary data
+
+```{r}
+
+# Load complementary data
+
+data_compl <- read_delim("input/complementary_data/complementary_data.csv", delim = ";") %>% 
+    filter(date != "(dmy)") %>% 
+    select(-remark)
+
+# In the case all day no changes in the rigging
+
+data_compl_no_time <- data_compl %>% 
+    filter(is.na(time)) %>% 
+    select(-time)
+
+# In the case there have been changes in the rigging
+
+data_compl_with_time <- data_compl %>% 
+    filter(!is.na(time)) 
+
+# Fuse
+
+data_stroke_1 <- right_join(data_stroke_0, data_compl_with_time,  by = c("date", "time"))
+data_stroke_2 <- right_join(data_stroke_0, data_compl_no_time,  by = c("date"))
+
+data_stroke_3 <- bind_rows(data_stroke_1, data_stroke_2) %>% 
+    mutate(TYPE = "stroke")
+
+data_sum_1 <- right_join(data_sum_0, data_compl_with_time,  by = c("date", "time"))
+data_sum_2 <- right_join(data_sum_0, data_compl_no_time,  by = c("date"))
+
+data_sum_3 <- bind_rows(data_sum_1, data_sum_2) %>% 
+    mutate(TYPE = "sum")
+
+# Full join
+
+data_all <-
+    full_join(
+        data_stroke_3,
+        data_sum_3
+    ) %>% 
+    mutate(RIG = paste(blade_shape, spread, oar_length, inboard, foot_stretcher, oarlock_height, sep = "_"))
+    
+
+```
+
+## Simplify for speed analysis by rigging type
+
+```{r}
+
+# Identify high intensity intervals
+
+high_wokout <- data_all %>%
+    mutate(as.numeric(avg_heart_rate) > 139) %>% 
+    filter(as.numeric(avg_stroke_rate) > 29) %>% 
+    select(id) %>% 
+    pull()
+
+
+# Unir and tidy
+
+data_speed <- data_all %>%
+    filter(id %in% high_wokout) %>% 
+    filter(workout == "Dist-250M") %>% 
+    filter(interval == 1) %>%
+        select(
+        date,
+        id,
+        speed_imp,
+        avg_speed_imp,
+        # stroke_rate,
+        # avg_stroke_rate,
+        RIG,
+        TYPE
+    ) %>% 
+    filter(case_when(TYPE == "stroke" ~ speed_imp != "---",
+                     TYPE == "sum" ~ avg_speed_imp != "---")) %>% 
+    filter(workout == "Dist-250M") %>% 
+    pivot_longer(cols = -c(id, date, RIG, TYPE), names_to = "DIM", values_to = "OBS_VALUE") %>%
+    mutate(OBS_VALUE = as.numeric(OBS_VALUE)) %>% 
+    mutate(DIM = case_when(DIM == "avg_speed_imp" ~ "speed_imp",
+                           TRUE ~ "speed_imp")) %>%
+    filter(!is.na(OBS_VALUE)) %>% 
+    select(-DIM)
+
+
+
+```
+
+
+## Normalize speed
+
+
+```{r}
+
+# Vitesse moyenne pour une journée et par rigging
+
+data_speed_normal <- data_speed %>%
+    filter(TYPE == "sum") %>%
+    mutate(OBS_VALUE = as.numeric(OBS_VALUE)) %>% 
+    group_by(date, RIG) %>% 
+    summarise(OBS_VALUE = mean(OBS_VALUE)) %>% 
+    ungroup() %>% 
+    filter(RIG == "comp_158_286_86_48.5_10") %>% 
+    rename("OBS_VALUE_REF" = "OBS_VALUE") %>% 
+    select(- RIG)
+    
+# Normaliser les autres données
+
+data_speed_normalized <- data_speed %>%
+    left_join(data_speed_normal, by = "date") %>% 
+    select(-date) %>% 
+    mutate(OBS_VALUE = OBS_VALUE / OBS_VALUE_REF * 100) %>% 
+    select(-OBS_VALUE_REF)
+    
+# Données agrégé
+
+data_speed_normalized_sum <- data_speed_normalized %>% 
+    filter(TYPE == "sum") %>% 
+    select(-c(TYPE))%>% 
+    # filter(RIG != "comp_158_286_86_48.5_10") %>% 
+    filter(!is.na(OBS_VALUE))
+
+# Plot
+
+ggplot(data_speed_normalized_sum, 
+       mapping = aes(x = RIG, y = OBS_VALUE)) +
+    geom_point() +
+    coord_flip()
+
+
+```
+
+# Analyse 
+
+```{r}
+
+# Calculate variation from the standard rigging
+
+
+```
+
+
+
+# Other stuff to de deleted
+
+
+```{r}
+
+# Format time and other variable
+
+# Format function
+
+fn_format <- function(x) {
+    x %>%
+        mutate(across(contains(match = "split"), ~ hms(.))) %>%
+        mutate(across(contains("elapsed_time"), ~ hms(.))) %>%
+        mutate(time_id = dmy_hm(time_id)) %>%
+        mutate(across(contains("distance"), ~ as.numeric(.))) %>%
+        mutate(across(contains("speed"), ~ as.numeric(.))) %>%
+        mutate(across(contains("heart"), ~ as.numeric(.))) %>%
+        mutate(across(contains("stroke"), ~ as.numeric(total_strokes)))
+}
+
+stroke_data_00 <- stroke_data0 %>%
+    fn_format()
+
+data_sum_0 <- summary_data0 %>%
+    fn_format()
+
+# Fonction finalise
+
+fn_finalise <- function(x) {
+    x %>%
+        mutate(time_id = time_id) %>%
+        mutate(date = date) %>%
+        # correct interval
+        mutate(workout = as.character(i)) %>%
+        mutate(workout_id = paste0(date, "_", workout))
+}
+
+
+
+```
+
+
+
+```{r}
+
+# Data
+
+data_sum_1 <- data_sum_0 %>%
+    # Clean problematic data
+    filter(workout_id != "11112022_2") %>% 
+    select(workout_id,
+           total_distance_imp,
+           avg_speed_imp,
+           avg_heart_rate,
+           avg_stroke_rate)
+
+# Model
+
+model_1 <- lm(data = data_sum_1, avg_speed_imp ~ avg_heart_rate + avg_stroke_rate)
+
+summary(model_1)
+
+```
+
+
+
+```{r}
+
+# Data
+
+stroke_data_01 <- stroke_data_00 %>%
+    select(workout_id,
+           speed_imp,
+           stroke_rate)
+
+# Model
+
+model_1 <- lm(data = stroke_data_01, speed_imp ~ stroke_rate)
+
+summary(model_1)
+    
+
+```
+
+
+
+
+
+
+
