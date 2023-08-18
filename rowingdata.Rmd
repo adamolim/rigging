@@ -307,7 +307,7 @@ ggplot(data_speed_normalized_sum,
 # Other stuff to de deleted
 
 
-```{r}
+```{r eval = FALSE}
 
 # Format time and other variable
 
@@ -317,24 +317,24 @@ fn_format <- function(x) {
     x %>%
         mutate(across(contains(match = "split"), ~ hms(.))) %>%
         mutate(across(contains("elapsed_time"), ~ hms(.))) %>%
-        mutate(time_id = dmy_hm(time_id)) %>%
+        mutate(time = dmy_hm(time)) %>%
         mutate(across(contains("distance"), ~ as.numeric(.))) %>%
         mutate(across(contains("speed"), ~ as.numeric(.))) %>%
         mutate(across(contains("heart"), ~ as.numeric(.))) %>%
         mutate(across(contains("stroke"), ~ as.numeric(total_strokes)))
 }
 
-stroke_data_00 <- stroke_data0 %>%
+data_stroke_0 <- data_stroke_0 %>%
     fn_format()
 
-data_sum_0 <- summary_data0 %>%
+data_sum_0 <- summary_data_0 %>%
     fn_format()
 
 # Fonction finalise
 
 fn_finalise <- function(x) {
     x %>%
-        mutate(time_id = time_id) %>%
+        mutate(time = time) %>%
         mutate(date = date) %>%
         # correct interval
         mutate(workout = as.character(i)) %>%
@@ -347,14 +347,14 @@ fn_finalise <- function(x) {
 
 
 
-```{r}
+```{r eval = FALSE}
 
 # Data
 
 data_sum_1 <- data_sum_0 %>%
     # Clean problematic data
-    filter(workout_id != "11112022_2") %>% 
-    select(workout_id,
+    filter(workout != "11112022_2") %>% 
+    select(workout,
            total_distance_imp,
            avg_speed_imp,
            avg_heart_rate,
@@ -370,18 +370,19 @@ summary(model_1)
 
 
 
-```{r}
+```{r eval = FALSE}
 
 # Data
 
-stroke_data_01 <- stroke_data_00 %>%
-    select(workout_id,
+data_stroke_01 <- data_stroke_0 %>%
+    select(id,
            speed_imp,
-           stroke_rate)
+           stroke_rate) %>% 
+    
 
 # Model
 
-model_1 <- lm(data = stroke_data_01, speed_imp ~ stroke_rate)
+model_1 <- lm(data = data_stroke_01, speed_imp ~ stroke_rate)
 
 summary(model_1)
     

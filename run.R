@@ -12,4 +12,5 @@ runAllChunks <- function(rmd, envir=globalenv()){
     sys.source(tempR, envir=envir)
 }
 
-runAllChunks("rowing_regression_model.Rmd")
+runAllChunks("rowingdata.Rmd")
+
