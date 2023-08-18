@@ -12,5 +12,5 @@ runAllChunks <- function(rmd, envir=globalenv()){
     sys.source(tempR, envir=envir)
 }
 
-runAllChunks("rowingdata.Rmd")
+runAllChunks("rigging.Rmd")
 
